@@ -31,10 +31,10 @@ DATASET_OPTIONS = {
     "High scatter": "high_scatter.csv",
     "Consistent overprediction": "consistent_overprediction.csv",
     "Consistent underprediction": "consistent_underprediction.csv",
-    "Severe blooms underpredicted": "severe_blooms_underpredicted.csv",
-    "Developed lakes underpredicted": "developed_lakes_underpredicted.csv",
-    "August blooms underpredicted": "august_blooms_underpredicted.csv",
-    "Post-storm blooms missed": "post_storm_blooms_missed.csv",
+    "Severe blooms": "severe_blooms_underpredicted.csv",
+    "Lake settings": "developed_lakes_underpredicted.csv",
+    "Seasonal timing": "august_blooms_underpredicted.csv",
+    "Storm conditions": "post_storm_blooms_missed.csv",
 }
 
 GROUPING_COLUMNS = {
@@ -49,10 +49,10 @@ DEFAULT_GROUPING_BY_DATASET = {
     "High scatter": "Bloom severity",
     "Consistent overprediction": "Bloom severity",
     "Consistent underprediction": "Bloom severity",
-    "Severe blooms underpredicted": "Bloom severity",
-    "Developed lakes underpredicted": "Lake setting",
-    "August blooms underpredicted": "Month",
-    "Post-storm blooms missed": "Storm status",
+    "Severe blooms": "Bloom severity",
+    "Lake settings": "Lake setting",
+    "Seasonal timing ": "Month",
+    "Storm conditions": "Storm status",
 }
 
 DATASET_STORIES = {
@@ -70,21 +70,17 @@ DATASET_STORIES = {
     "Consistent underprediction": (
         "The model predicts too low across most lake samples."
     ),
-    "Severe blooms underpredicted": (
-        "Severe blooms are often underpredicted, even when the overall fit "
-        "looks somewhat acceptable."
+    "Severe blooms": (
+        "This model includes mild, moderate, and severe bloom conditions. "
     ),
-    "Developed lakes underpredicted": (
-        "Developed shoreline lakes are underpredicted more strongly than "
-        "isolated shoreline lakes."
+    "Lake settings": (
+        "This model includes developed and isolated shoreline lake conditions."
     ),
-    "August blooms underpredicted": (
-        "August bloom conditions are underpredicted more strongly than "
-        "other months."
+    "Seasonal timing": (
+        "This model includes lake samples from different months in the bloom."
     ),
-    "Post-storm blooms missed": (
-        "After-storm bloom samples are underpredicted more strongly than "
-        "before-storm samples."
+    "Storm conditions": (
+        "This model includes samples collected before and after storm events."
     ),
 }
 # ---------------------------------------------------------------------
