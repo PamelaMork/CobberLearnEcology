@@ -1049,6 +1049,7 @@ class KNNTab(QWidget):
         self.prediction_text.setReadOnly(True)
         self.prediction_text.setMinimumHeight(230)
         self.prediction_text.setMaximumHeight(260)
+        self.prediction_text.setStyleSheet("font-size: 10pt;")
 
         knn_header = QLabel("<b>KNN Controls</b>")
         knn_header.setStyleSheet("color: #6c1d45; font-weight: bold; font-size: 11pt;")
