@@ -1,0 +1,13 @@
+species_id,species_name,genus,species,taxa,community_count_column,total_records_in_surveys
+DM,Dipodomys merriami,Dipodomys,merriami,Rodent,count_dm,10596
+PP,Chaetodipus penicillatus,Chaetodipus,penicillatus,Rodent,count_pp,3123
+DO,Dipodomys ordii,Dipodomys,ordii,Rodent,count_do,3027
+PB,Chaetodipus baileyi,Chaetodipus,baileyi,Rodent,count_pb,2891
+RM,Reithrodontomys megalotis,Reithrodontomys,megalotis,Rodent,count_rm,2609
+DS,Dipodomys spectabilis,Dipodomys,spectabilis,Rodent,count_ds,2504
+OT,Onychomys torridus,Onychomys,torridus,Rodent,count_ot,2249
+PF,Perognathus flavus,Perognathus,flavus,Rodent,count_pf,1597
+PE,Peromyscus eremicus,Peromyscus,eremicus,Rodent,count_pe,1299
+NL,Neotoma albigula,Neotoma,albigula,Rodent,count_nl,1252
+OL,Onychomys leucogaster,Onychomys,leucogaster,Rodent,count_ol,1006
+PM,Peromyscus maniculatus,Peromyscus,maniculatus,Rodent,count_pm,899
