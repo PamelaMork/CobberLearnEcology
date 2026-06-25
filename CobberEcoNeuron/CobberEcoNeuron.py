@@ -365,7 +365,7 @@ class NeuralNetworkTab(QWidget):
         form_layout = QFormLayout()
 
         self.neurons_spinner = QSpinBox()
-        self.neurons_spinner.setRange(2, 16)
+        self.neurons_spinner.setRange(2, 32)
         self.neurons_spinner.setValue(8)
 
         self.learning_rate_input = QLineEdit("0.005")
