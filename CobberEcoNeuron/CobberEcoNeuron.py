@@ -185,10 +185,10 @@ class SingleNeuronTab(QWidget):
         self.rmse_label.setStyleSheet("font-size: 16px;")
 
         self.weight_slider.setRange(-100, 100)
-        self.weight_slider.setValue(50)
+        self.weight_slider.setValue(10)
 
         self.bias_slider.setRange(-50, 50)
-        self.bias_slider.setValue(-25)
+        self.bias_slider.setValue(0)
 
         form_layout.addRow("Weight (w):", self.weight_slider)
         form_layout.addRow("Bias (b):", self.bias_slider)
@@ -369,7 +369,7 @@ class NeuralNetworkTab(QWidget):
         self.neurons_spinner.setValue(8)
 
         self.learning_rate_input = QLineEdit("0.005")
-        self.epochs_input = QLineEdit("10000")
+        self.epochs_input = QLineEdit("1000")
         self.train_button = QPushButton("Train Network")
 
         self.train_button.setStyleSheet("""
@@ -489,25 +489,43 @@ class NeuralNetworkTab(QWidget):
             activation="relu",
             solver="adam",
             learning_rate_init=learning_rate,
-            max_iter=epochs,
-            random_state=42,
-            early_stopping=True,
-            n_iter_no_change=500,
+            max_iter=1,
+            warm_start=True,
+            random_state=42
         )
-        self.model.fit(X_scaled, y_scaled)
+
+        self.loss_canvas.axes.clear()
+        self.loss_canvas.axes.set_title("Training Loss vs. Epoch")
+        self.loss_canvas.axes.set_xlabel("Epoch")
+        self.loss_canvas.axes.set_ylabel("Scaled Training Loss")
+        self.loss_canvas.axes.grid(True, alpha=0.3)
+        self.loss_canvas.draw()
+
+        losses = []
+        update_every = 25
+
+        for epoch in range(epochs):
+            self.model.fit(X_scaled, y_scaled)
+
+            if hasattr(self.model, "loss_"):
+                losses.append(self.model.loss_)
+
+            if epoch % update_every == 0 or epoch == epochs - 1:
+                self.loss_canvas.axes.clear()
+                self.loss_canvas.axes.plot(range(1, len(losses) + 1), losses)
+                self.loss_canvas.axes.set_title("Training Loss vs. Epoch")
+                self.loss_canvas.axes.set_xlabel("Epoch")
+                self.loss_canvas.axes.set_ylabel("Scaled Training Loss")
+                self.loss_canvas.axes.grid(True, alpha=0.3)
+                self.loss_canvas.draw()
+
+                self.train_button.setText(f"Training... epoch {epoch + 1} of {epochs}")
+                QApplication.processEvents()
 
         self.train_button.setText("Train Network")
         self.train_button.setEnabled(True)
 
         self.update_schematic()
-
-        self.loss_canvas.axes.clear()
-        self.loss_canvas.axes.plot(self.model.loss_curve_)
-        self.loss_canvas.axes.set_title("Training Loss vs. Epoch")
-        self.loss_canvas.axes.set_xlabel("Epoch")
-        self.loss_canvas.axes.set_ylabel("Scaled Training Loss")
-        self.loss_canvas.axes.grid(True)
-        self.loss_canvas.draw()
 
         x_smooth = np.linspace(self.air_temps_c.min(), self.air_temps_c.max(), 240).reshape(-1, 1)
         x_smooth_scaled = scaler_X.transform(x_smooth)
@@ -561,7 +579,6 @@ class NeuralNetworkTab(QWidget):
             f'<span style="color:#6C1D45; font-weight:bold;">RMSE:</span> '
             f'<span style="color:#3D3D3D;">{rmse:.2f} bee visits</span>'
         )
-
     def update_schematic(self):
         ax = self.schematic_canvas.axes
         ax.clear()
