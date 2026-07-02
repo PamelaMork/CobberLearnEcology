@@ -9,6 +9,8 @@ Current rebuild stage:
     Tab 2: Watch Memory
     Tab 3: Expose Memory
     Tab 4: Check Prediction
+    Tab 5: One Training Step
+    Tab 6: Continue Training
 
 This version keeps Darin's calculation ideas but wraps them in a
 student-facing learning path for the ML for Ecology LSTM chapter.
@@ -2967,6 +2969,467 @@ class OneTrainingStepTab(QWidget):
             "</div>"
         )
 
+
+# ============================================================
+# Custom visual widget: loss history graph for Tab 6
+# ============================================================
+
+class LossHistoryGraphWidget(QWidget):
+    """
+    Draws a simple loss-history graph for repeated output-layer training.
+
+    This keeps the app self-contained. No matplotlib dependency is needed.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.history: List[dict[str, float]] = []
+        self.setMinimumHeight(210)
+
+    def set_history(self, history: List[dict[str, float]]) -> None:
+        self.history = history
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        width = self.width()
+        height = self.height()
+        maroon = QColor(COBBER_MAROON)
+        charcoal = QColor(CHARCOAL)
+        light_gray = QColor(LIGHT_GRAY)
+        mid_gray = QColor("#d6d6d6")
+        white = QColor("#ffffff")
+
+        painter.fillRect(self.rect(), white)
+
+        title_font = QFont("Lato", 13)
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.setPen(charcoal)
+        painter.drawText(QRectF(0, 8, width, 24), Qt.AlignmentFlag.AlignCenter, "Mean loss during training")
+
+        plot_left = 58
+        plot_right = width - 26
+        plot_top = 42
+        plot_bottom = height - 42
+        plot_width = max(10, plot_right - plot_left)
+        plot_height = max(10, plot_bottom - plot_top)
+
+        painter.setPen(QPen(mid_gray, 1))
+        painter.setBrush(QBrush(QColor("#fbfbfb")))
+        painter.drawRect(int(plot_left), int(plot_top), int(plot_width), int(plot_height))
+
+        if not self.history:
+            painter.setFont(QFont("Lato", 11))
+            painter.setPen(maroon)
+            painter.drawText(
+                QRectF(plot_left, plot_top, plot_width, plot_height),
+                Qt.AlignmentFlag.AlignCenter,
+                "Training history will appear here.",
+            )
+            return
+
+        losses = [entry["mean_loss"] for entry in self.history]
+        steps = [entry["step"] for entry in self.history]
+        min_step = min(steps)
+        max_step = max(steps)
+        min_loss = min(losses)
+        max_loss = max(losses)
+
+        if max_step == min_step:
+            max_step = min_step + 1
+        if abs(max_loss - min_loss) < 1e-9:
+            max_loss = min_loss + 1.0
+
+        loss_padding = (max_loss - min_loss) * 0.08
+        y_min = max(0.0, min_loss - loss_padding)
+        y_max = max_loss + loss_padding
+        if abs(y_max - y_min) < 1e-9:
+            y_max = y_min + 1.0
+
+        def x_for_step(step: float) -> float:
+            return plot_left + ((step - min_step) / (max_step - min_step)) * plot_width
+
+        def y_for_loss(loss: float) -> float:
+            return plot_bottom - ((loss - y_min) / (y_max - y_min)) * plot_height
+
+        painter.setPen(QPen(QColor("#eeeeee"), 1))
+        for frac in [0.25, 0.50, 0.75]:
+            y = plot_top + frac * plot_height
+            painter.drawLine(int(plot_left), int(y), int(plot_right), int(y))
+
+        points = [(x_for_step(entry["step"]), y_for_loss(entry["mean_loss"])) for entry in self.history]
+        if len(points) >= 2:
+            painter.setPen(QPen(maroon, 3))
+            for first, second in zip(points[:-1], points[1:]):
+                painter.drawLine(int(first[0]), int(first[1]), int(second[0]), int(second[1]))
+
+        painter.setBrush(QBrush(maroon))
+        painter.setPen(QPen(maroon, 2))
+        for x, y in points:
+            painter.drawEllipse(QRectF(x - 3.5, y - 3.5, 7, 7))
+
+        painter.setFont(QFont("Lato", 9))
+        painter.setPen(QColor("#555555"))
+        painter.drawText(QRectF(plot_left - 44, plot_top - 8, 42, 18), Qt.AlignmentFlag.AlignRight, fmt_decimal(y_max))
+        painter.drawText(QRectF(plot_left - 44, plot_bottom - 10, 42, 18), Qt.AlignmentFlag.AlignRight, fmt_decimal(y_min))
+        painter.drawText(QRectF(plot_left, plot_bottom + 12, 80, 18), Qt.AlignmentFlag.AlignLeft, f"step {int(min_step)}")
+        painter.drawText(QRectF(plot_right - 88, plot_bottom + 12, 88, 18), Qt.AlignmentFlag.AlignRight, f"step {int(max(steps))}")
+
+        painter.setFont(QFont("Lato", 10))
+        painter.setPen(charcoal)
+        painter.drawText(QRectF(plot_left, height - 22, plot_width, 18), Qt.AlignmentFlag.AlignCenter, "training step")
+
+
+# ============================================================
+# Tab 6: Continue Training
+# ============================================================
+
+class ContinueTrainingTab(QWidget):
+    """
+    Tab 6 student story:
+
+    One training step is not the whole process. The model repeats
+    the same output-layer update across the training windows. This
+    simplified tab keeps the focus on the big idea: mean loss can
+    decrease as repeated updates nudge the continuous prediction scores.
+    """
+
+    FIXED_F_VALUE = 0.60
+    FIXED_I_VALUE = 0.40
+    FIXED_O_VALUE = 0.90
+    START_W_VALUE = 0.80
+    START_B_VALUE = 0.10
+    ETA_VALUE = 0.10
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.sequence: List[int] = PRESETS["Chapter sequence"].copy()
+        self.window_length: int = 4
+        self.current_w_value: float = self.START_W_VALUE
+        self.current_b_value: float = self.START_B_VALUE
+        self.training_step: int = 0
+        self.rows: List[PredictionRow] = []
+        self.history: List[dict[str, float]] = []
+        self.last_average_w_signal: float = 0.0
+        self.last_average_b_signal: float = 0.0
+        self.last_training_count: int = 0
+        self.loss_before_last_training: float = 0.0
+        self.loss_after_last_training: float = 0.0
+
+        self._reset_training_state()
+
+        root_layout = QHBoxLayout(self)
+        root_layout.setContentsMargins(10, 10, 10, 10)
+        root_layout.setSpacing(12)
+
+        self.side_panel = self._build_side_panel()
+        self.main_panel = self._build_main_panel()
+
+        root_layout.addWidget(self.side_panel, stretch=0)
+        root_layout.addWidget(self.main_panel, stretch=1)
+
+        self._refresh_everything()
+
+    def _build_side_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("SidePanel")
+        panel.setMinimumWidth(295)
+        panel.setMaximumWidth(335)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        question_box = QGroupBox("Question")
+        question_layout = QVBoxLayout(question_box)
+        question = QLabel("What happens when the model repeats the output-layer training step?")
+        question.setWordWrap(True)
+        question_layout.addWidget(question)
+        layout.addWidget(question_box)
+
+        sequence_box = QGroupBox("Sequence")
+        sequence_layout = QVBoxLayout(sequence_box)
+        sequence_layout.addWidget(QLabel("Choose a sequence:"))
+        self.sequence_combo = QComboBox()
+        self.sequence_combo.addItems(list(PRESETS.keys()))
+        self.sequence_combo.setCurrentText("Chapter sequence")
+        self.sequence_combo.currentTextChanged.connect(self._sequence_changed)
+        sequence_layout.addWidget(self.sequence_combo)
+        layout.addWidget(sequence_box)
+
+        settings_box = QGroupBox("Fixed model settings")
+        settings_layout = QVBoxLayout(settings_box)
+        settings_layout.setSpacing(4)
+        for text in [
+            "Keep old memory: f = 0.60",
+            "Write new input: i = 0.40",
+            "Expose memory: o = 0.90",
+            "Learning rate: η = 0.10",
+            "Only w and b train in this tab.",
+        ]:
+            label = QLabel(text)
+            label.setObjectName("SmallNote")
+            settings_layout.addWidget(label)
+        layout.addWidget(settings_box)
+
+        actions_box = QGroupBox("Continue training")
+        actions_layout = QVBoxLayout(actions_box)
+        actions_layout.setSpacing(8)
+
+        self.train_one_button = QPushButton("Train 1 More Step")
+        self.train_ten_button = QPushButton("Train 10 Steps")
+        self.reset_button = QPushButton("Reset Training")
+        for button in [self.train_one_button, self.train_ten_button, self.reset_button]:
+            button.setObjectName("StepButton")
+            button.setMinimumHeight(38)
+            actions_layout.addWidget(button)
+
+        self.train_one_button.clicked.connect(lambda: self._train_steps(1))
+        self.train_ten_button.clicked.connect(lambda: self._train_steps(10))
+        self.reset_button.clicked.connect(self._reset_clicked)
+
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("StatusLabel")
+        self.status_label.setWordWrap(True)
+        actions_layout.addWidget(self.status_label)
+        layout.addWidget(actions_box)
+        layout.addStretch()
+        return panel
+
+    def _build_main_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        header = QLabel("Continue Training the Output Layer")
+        header.setObjectName("MainHeader")
+        layout.addWidget(header)
+
+        intro = QLabel(
+            "Training repeats the same idea from Tab 5. The model checks every window, averages the update signals, "
+            "uses η to nudge w and b, and then checks the windows again."
+        )
+        intro.setWordWrap(True)
+        intro.setObjectName("IntroText")
+        layout.addWidget(intro)
+
+        top_row = QHBoxLayout()
+        top_row.setSpacing(10)
+
+        graph_box = QGroupBox("Loss history")
+        graph_layout = QVBoxLayout(graph_box)
+        graph_layout.setContentsMargins(8, 8, 8, 8)
+        self.loss_graph = LossHistoryGraphWidget()
+        self.loss_graph.setMinimumHeight(250)
+        graph_layout.addWidget(self.loss_graph)
+        top_row.addWidget(graph_box, stretch=3)
+
+        summary_box = QGroupBox("Training summary")
+        summary_box.setFixedWidth(390)
+        summary_layout = QVBoxLayout(summary_box)
+        summary_layout.setContentsMargins(10, 8, 10, 8)
+        summary_layout.setSpacing(8)
+
+        self.summary_card = QTextEdit()
+        self.summary_card.setReadOnly(True)
+        self.summary_card.setFont(QFont("Lato", 11))
+        self.summary_card.setObjectName("CalcCard")
+        self.summary_card.setMinimumHeight(155)
+        self.summary_card.setMaximumHeight(180)
+        summary_layout.addWidget(self.summary_card)
+
+        self.interpretation_label = QLabel(
+            "Big idea: repeated training nudges the continuous prediction scores. Watch the mean loss, not every calculation detail."
+        )
+        self.interpretation_label.setWordWrap(True)
+        self.interpretation_label.setObjectName("StatusLabel")
+        summary_layout.addWidget(self.interpretation_label)
+        summary_layout.addStretch()
+        top_row.addWidget(summary_box, stretch=0)
+        layout.addLayout(top_row, stretch=1)
+
+        prediction_box = QGroupBox("Current predictions across windows")
+        prediction_layout = QVBoxLayout(prediction_box)
+        prediction_layout.setContentsMargins(8, 8, 8, 8)
+        self.prediction_table = QTableWidget()
+        self.prediction_table.setMinimumHeight(230)
+        prediction_layout.addWidget(self.prediction_table)
+        layout.addWidget(prediction_box, stretch=1)
+
+        return panel
+
+    def _sequence_changed(self, preset_name: str) -> None:
+        if preset_name not in PRESETS:
+            return
+        self.sequence = PRESETS[preset_name].copy()
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _reset_clicked(self) -> None:
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _reset_training_state(self) -> None:
+        self.current_w_value = self.START_W_VALUE
+        self.current_b_value = self.START_B_VALUE
+        self.training_step = 0
+        self.last_average_w_signal = 0.0
+        self.last_average_b_signal = 0.0
+        self.last_training_count = 0
+        self.rows = self._prediction_rows_for_current_parameters()
+        self.loss_before_last_training = self._mean_loss(self.rows)
+        self.loss_after_last_training = self.loss_before_last_training
+        self.history = []
+        self._append_history_row()
+
+    def _prediction_rows_for_current_parameters(self) -> List[PredictionRow]:
+        return TinyMemoryCell.prediction_rows(
+            self.sequence,
+            self.window_length,
+            self.FIXED_F_VALUE,
+            self.FIXED_I_VALUE,
+            self.FIXED_O_VALUE,
+            self.current_w_value,
+            self.current_b_value,
+        )
+
+    def _rounded_prediction(self, yhat: float) -> int:
+        if yhat > 0.5:
+            return 1
+        if yhat < -0.5:
+            return -1
+        return 0
+
+    def _mean_loss(self, rows: List[PredictionRow]) -> float:
+        if not rows:
+            return 0.0
+        return sum(row.loss for row in rows) / len(rows)
+
+    def _rounded_accuracy(self, rows: List[PredictionRow]) -> float:
+        if not rows:
+            return 0.0
+        correct = 0
+        for row in rows:
+            if self._rounded_prediction(row.yhat) == row.target:
+                correct += 1
+        return correct / len(rows)
+
+    def _w_signal(self, row: PredictionRow) -> float:
+        return 2.0 * row.error * row.final_h
+
+    def _b_signal(self, row: PredictionRow) -> float:
+        return 2.0 * row.error
+
+    def _append_history_row(self) -> None:
+        self.history.append(
+            {
+                "step": float(self.training_step),
+                "w": self.current_w_value,
+                "b": self.current_b_value,
+                "mean_loss": self._mean_loss(self.rows),
+            }
+        )
+
+    def _train_steps(self, count: int) -> None:
+        if not self.rows:
+            return
+
+        self.last_training_count = count
+        self.loss_before_last_training = self._mean_loss(self.rows)
+        final_average_w_signal = 0.0
+        final_average_b_signal = 0.0
+
+        for _ in range(count):
+            current_rows = self._prediction_rows_for_current_parameters()
+            w_signals = [self._w_signal(row) for row in current_rows]
+            b_signals = [self._b_signal(row) for row in current_rows]
+            average_w_signal = sum(w_signals) / len(w_signals)
+            average_b_signal = sum(b_signals) / len(b_signals)
+
+            self.current_w_value = self.current_w_value - self.ETA_VALUE * average_w_signal
+            self.current_b_value = self.current_b_value - self.ETA_VALUE * average_b_signal
+            self.training_step += 1
+            self.rows = self._prediction_rows_for_current_parameters()
+            self._append_history_row()
+
+            final_average_w_signal = average_w_signal
+            final_average_b_signal = average_b_signal
+
+        self.last_average_w_signal = final_average_w_signal
+        self.last_average_b_signal = final_average_b_signal
+        self.loss_after_last_training = self._mean_loss(self.rows)
+        self._refresh_everything()
+
+    def _refresh_everything(self) -> None:
+        self._refresh_status_label()
+        self._refresh_loss_graph()
+        self._refresh_prediction_table()
+        self._refresh_summary_card()
+
+    def _refresh_status_label(self) -> None:
+        mean_loss = self._mean_loss(self.rows)
+        self.status_label.setText(
+            f"Step {self.training_step}:\n"
+            f"mean loss = {fmt_decimal(mean_loss)}\n"
+            f"w = {fmt_decimal(self.current_w_value)}, b = {fmt_decimal(self.current_b_value)}"
+        )
+
+    def _refresh_loss_graph(self) -> None:
+        self.loss_graph.set_history(self.history)
+
+    def _refresh_prediction_table(self) -> None:
+        self.prediction_table.clear()
+        self.prediction_table.setColumnCount(3)
+        self.prediction_table.setHorizontalHeaderLabels(
+            [
+                "Window",
+                "Target y",
+                "ŷ current",
+            ]
+        )
+        self.prediction_table.verticalHeader().setVisible(False)
+        self.prediction_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        self.prediction_table.setRowCount(len(self.rows))
+        for row_index, row in enumerate(self.rows):
+            self.prediction_table.setItem(row_index, 0, make_table_item(row.window_number))
+            self.prediction_table.setItem(row_index, 1, make_target_item(trend_text(row.target), is_current=False))
+            self.prediction_table.setItem(row_index, 2, make_table_item(fmt_decimal(row.yhat)))
+        self.prediction_table.resizeRowsToContents()
+
+    def _refresh_summary_card(self) -> None:
+        current_loss = self._mean_loss(self.rows)
+
+        if self.training_step == 0:
+            self.summary_card.setHtml(
+                "<h3>Ready to continue training</h3>"
+                "<div style='font-size: 14px;'>"
+                "Click <b>Train 1 More Step</b> or <b>Train 10 Steps</b>.<br><br>"
+                f"Current step: <b>{self.training_step}</b><br>"
+                f"Mean loss: <b>{fmt_decimal(current_loss)}</b><br>"
+                f"Output layer: <b>w = {fmt_decimal(self.current_w_value)}, b = {fmt_decimal(self.current_b_value)}</b>"
+                "</div>"
+            )
+            return
+
+        step_word = "step" if self.last_training_count == 1 else "steps"
+        self.summary_card.setHtml(
+            f"<h3>Trained {self.last_training_count} more {step_word}</h3>"
+            "<div style='font-size: 14px;'>"
+            f"Current step: <b>{self.training_step}</b><br>"
+            f"Mean loss: <b>{fmt_decimal(current_loss)}</b><br>"
+            f"Output layer: <b>w = {fmt_decimal(self.current_w_value)}, b = {fmt_decimal(self.current_b_value)}</b><br><br>"
+            f"Last change in mean loss: {fmt_decimal(self.loss_before_last_training)} &rarr; "
+            f"<span style='color:{COBBER_MAROON}; font-weight:bold;'>{fmt_decimal(self.loss_after_last_training)}</span>"
+            "</div>"
+        )
+
+
 # ============================================================
 # Main app window
 # ============================================================
@@ -2987,9 +3450,7 @@ class CobberEcoLSTMguidedApp(QMainWindow):
 
         tabs.addTab(OneTrainingStepTab(), "5. One Training Step")
 
-        placeholder_6 = QLabel("Tab 6 will show repeated training and a loss graph.")
-        placeholder_6.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        tabs.addTab(placeholder_6, "6. Continue Training")
+        tabs.addTab(ContinueTrainingTab(), "6. Continue Training")
 
         self.setCentralWidget(tabs)
 
