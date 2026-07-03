@@ -11,6 +11,7 @@ Current rebuild stage:
     Tab 4: Check Prediction
     Tab 5: One Training Step
     Tab 6: Continue Training
+    Tab 7: Experiment With Controls
 
 This version keeps Darin's calculation ideas but wraps them in a
 student-facing learning path for the ML for Ecology LSTM chapter.
@@ -3430,6 +3431,356 @@ class ContinueTrainingTab(QWidget):
         )
 
 
+
+# ============================================================
+# Tab 7: Experiment With Controls
+# ============================================================
+
+class ExperimentControlsTab(QWidget):
+    """
+    Tab 7 student story:
+
+    Students choose the teaching model controls and watch the loss curve.
+    This is a sandbox, not a full LSTM trainer. The memory controls are
+    chosen by the student so the effect of f, i, o, and eta stays visible.
+    """
+
+    START_W_VALUE = 0.80
+    START_B_VALUE = 0.10
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.sequence: List[int] = PRESETS["Chapter sequence"].copy()
+        self.window_length: int = 4
+
+        self.f_value: float = 0.60
+        self.i_value: float = 0.40
+        self.o_value: float = 0.90
+        self.eta_value: float = 0.10
+
+        self.current_w_value: float = self.START_W_VALUE
+        self.current_b_value: float = self.START_B_VALUE
+        self.training_step: int = 0
+        self.rows: List[PredictionRow] = []
+        self.history: List[dict[str, float]] = []
+        self.last_training_count: int = 0
+        self.loss_before_last_training: float = 0.0
+        self.loss_after_last_training: float = 0.0
+
+        self._reset_training_state()
+
+        root_layout = QHBoxLayout(self)
+        root_layout.setContentsMargins(10, 10, 10, 10)
+        root_layout.setSpacing(12)
+
+        self.side_panel = self._build_side_panel()
+        self.main_panel = self._build_main_panel()
+
+        root_layout.addWidget(self.side_panel, stretch=0)
+        root_layout.addWidget(self.main_panel, stretch=1)
+
+        self._refresh_everything()
+
+    def _build_side_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("SidePanel")
+        panel.setMinimumWidth(305)
+        panel.setMaximumWidth(345)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        question_box = QGroupBox("Question")
+        question_layout = QVBoxLayout(question_box)
+        question = QLabel("How do the memory controls and learning rate change the loss curve?")
+        question.setWordWrap(True)
+        question_layout.addWidget(question)
+        layout.addWidget(question_box)
+
+        sequence_box = QGroupBox("Sequence")
+        sequence_layout = QVBoxLayout(sequence_box)
+        sequence_layout.addWidget(QLabel("Choose a sequence:"))
+        self.sequence_combo = QComboBox()
+        self.sequence_combo.addItems(list(PRESETS.keys()))
+        self.sequence_combo.setCurrentText("Chapter sequence")
+        self.sequence_combo.currentTextChanged.connect(self._sequence_changed)
+        sequence_layout.addWidget(self.sequence_combo)
+        layout.addWidget(sequence_box)
+
+        controls_box = QGroupBox("Experiment controls")
+        controls_layout = QVBoxLayout(controls_box)
+        controls_layout.setSpacing(8)
+
+        self.f_label = QLabel("")
+        self.f_label.setObjectName("SmallNote")
+        self.f_slider = QSlider(Qt.Orientation.Horizontal)
+        self.f_slider.setRange(0, 100)
+        self.f_slider.setValue(60)
+        self.f_slider.valueChanged.connect(self._f_slider_changed)
+        controls_layout.addWidget(self.f_label)
+        controls_layout.addWidget(self.f_slider)
+
+        self.i_label = QLabel("")
+        self.i_label.setObjectName("SmallNote")
+        self.i_slider = QSlider(Qt.Orientation.Horizontal)
+        self.i_slider.setRange(0, 100)
+        self.i_slider.setValue(40)
+        self.i_slider.valueChanged.connect(self._i_slider_changed)
+        controls_layout.addWidget(self.i_label)
+        controls_layout.addWidget(self.i_slider)
+
+        self.o_label = QLabel("")
+        self.o_label.setObjectName("SmallNote")
+        self.o_slider = QSlider(Qt.Orientation.Horizontal)
+        self.o_slider.setRange(0, 100)
+        self.o_slider.setValue(90)
+        self.o_slider.valueChanged.connect(self._o_slider_changed)
+        controls_layout.addWidget(self.o_label)
+        controls_layout.addWidget(self.o_slider)
+
+        self.eta_label = QLabel("")
+        self.eta_label.setObjectName("SmallNote")
+        self.eta_slider = QSlider(Qt.Orientation.Horizontal)
+        self.eta_slider.setRange(1, 50)
+        self.eta_slider.setValue(10)
+        self.eta_slider.valueChanged.connect(self._eta_slider_changed)
+        controls_layout.addWidget(self.eta_label)
+        controls_layout.addWidget(self.eta_slider)
+
+        note = QLabel("Changing a slider resets the experiment so the curve matches the selected controls.")
+        note.setWordWrap(True)
+        note.setObjectName("SmallNote")
+        controls_layout.addWidget(note)
+        layout.addWidget(controls_box)
+
+        actions_box = QGroupBox("Train with these settings")
+        actions_layout = QVBoxLayout(actions_box)
+        actions_layout.setSpacing(8)
+
+        self.train_ten_button = QPushButton("Train 10 Steps")
+        self.train_fifty_button = QPushButton("Train 50 Steps")
+        self.reset_button = QPushButton("Reset Experiment")
+        for button in [self.train_ten_button, self.train_fifty_button, self.reset_button]:
+            button.setObjectName("StepButton")
+            button.setMinimumHeight(38)
+            actions_layout.addWidget(button)
+
+        self.train_ten_button.clicked.connect(lambda: self._train_steps(10))
+        self.train_fifty_button.clicked.connect(lambda: self._train_steps(50))
+        self.reset_button.clicked.connect(self._reset_clicked)
+
+        layout.addWidget(actions_box)
+        layout.addStretch()
+        return panel
+
+    def _build_main_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        header = QLabel("Experiment With Controls")
+        header.setObjectName("MainHeader")
+        layout.addWidget(header)
+
+        intro = QLabel(
+            "Choose the keep, write, expose, and learning-rate settings. Then train the output layer and watch the loss curve. "
+            "This tab is a sandbox for the teaching memory cell."
+        )
+        intro.setWordWrap(True)
+        intro.setObjectName("IntroText")
+        layout.addWidget(intro)
+
+        graph_box = QGroupBox("Loss curve")
+        graph_layout = QVBoxLayout(graph_box)
+        graph_layout.setContentsMargins(10, 10, 10, 10)
+        self.loss_graph = LossHistoryGraphWidget()
+        self.loss_graph.setMinimumHeight(330)
+        graph_layout.addWidget(self.loss_graph)
+        layout.addWidget(graph_box, stretch=2)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(10)
+
+        summary_box = QGroupBox("Current experiment")
+        summary_layout = QVBoxLayout(summary_box)
+        summary_layout.setContentsMargins(10, 8, 10, 8)
+        self.summary_card = QTextEdit()
+        self.summary_card.setReadOnly(True)
+        self.summary_card.setFont(QFont("Lato", 11))
+        self.summary_card.setObjectName("CalcCard")
+        self.summary_card.setMinimumHeight(150)
+        self.summary_card.setMaximumHeight(190)
+        summary_layout.addWidget(self.summary_card)
+        bottom_row.addWidget(summary_box, stretch=1)
+
+        interpretation_box = QGroupBox("Interpretation")
+        interpretation_layout = QVBoxLayout(interpretation_box)
+        interpretation_layout.setContentsMargins(10, 8, 10, 8)
+        self.interpretation_card = QTextEdit()
+        self.interpretation_card.setReadOnly(True)
+        self.interpretation_card.setFont(QFont("Lato", 11))
+        self.interpretation_card.setObjectName("CalcCard")
+        self.interpretation_card.setMinimumHeight(150)
+        self.interpretation_card.setMaximumHeight(190)
+        self.interpretation_card.setHtml(
+            "<h3>What to watch</h3>"
+            "<div style='font-size: 14px;'>"
+            "A higher <b>f</b> keeps memory longer. A higher <b>i</b> writes more of the current input. "
+            "A higher <b>o</b> exposes more memory for prediction. A higher <b>η</b> makes larger training steps.<br><br>"
+            "These controls belong to the teaching model. A full LSTM learns gate behavior from data. "
+            "Here, you choose the controls so you can see how memory behavior changes."
+            "</div>"
+        )
+        interpretation_layout.addWidget(self.interpretation_card)
+        bottom_row.addWidget(interpretation_box, stretch=1)
+
+        layout.addLayout(bottom_row, stretch=0)
+        return panel
+
+    def _sequence_changed(self, preset_name: str) -> None:
+        if preset_name not in PRESETS:
+            return
+        self.sequence = PRESETS[preset_name].copy()
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _f_slider_changed(self, value: int) -> None:
+        self.f_value = value / 100.0
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _i_slider_changed(self, value: int) -> None:
+        self.i_value = value / 100.0
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _o_slider_changed(self, value: int) -> None:
+        self.o_value = value / 100.0
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _eta_slider_changed(self, value: int) -> None:
+        self.eta_value = value / 100.0
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _reset_clicked(self) -> None:
+        self._reset_training_state()
+        self._refresh_everything()
+
+    def _reset_training_state(self) -> None:
+        self.current_w_value = self.START_W_VALUE
+        self.current_b_value = self.START_B_VALUE
+        self.training_step = 0
+        self.last_training_count = 0
+        self.rows = self._prediction_rows_for_current_parameters()
+        self.loss_before_last_training = self._mean_loss(self.rows)
+        self.loss_after_last_training = self.loss_before_last_training
+        self.history = []
+        self._append_history_row()
+
+    def _prediction_rows_for_current_parameters(self) -> List[PredictionRow]:
+        return TinyMemoryCell.prediction_rows(
+            self.sequence,
+            self.window_length,
+            self.f_value,
+            self.i_value,
+            self.o_value,
+            self.current_w_value,
+            self.current_b_value,
+        )
+
+    def _mean_loss(self, rows: List[PredictionRow]) -> float:
+        if not rows:
+            return 0.0
+        return sum(row.loss for row in rows) / len(rows)
+
+    def _w_signal(self, row: PredictionRow) -> float:
+        return 2.0 * row.error * row.final_h
+
+    def _b_signal(self, row: PredictionRow) -> float:
+        return 2.0 * row.error
+
+    def _append_history_row(self) -> None:
+        self.history.append(
+            {
+                "step": float(self.training_step),
+                "w": self.current_w_value,
+                "b": self.current_b_value,
+                "mean_loss": self._mean_loss(self.rows),
+            }
+        )
+
+    def _train_steps(self, count: int) -> None:
+        if not self.rows:
+            return
+
+        self.last_training_count = count
+        self.loss_before_last_training = self._mean_loss(self.rows)
+
+        for _ in range(count):
+            current_rows = self._prediction_rows_for_current_parameters()
+            w_signals = [self._w_signal(row) for row in current_rows]
+            b_signals = [self._b_signal(row) for row in current_rows]
+            average_w_signal = sum(w_signals) / len(w_signals)
+            average_b_signal = sum(b_signals) / len(b_signals)
+
+            self.current_w_value = self.current_w_value - self.eta_value * average_w_signal
+            self.current_b_value = self.current_b_value - self.eta_value * average_b_signal
+            self.training_step += 1
+            self.rows = self._prediction_rows_for_current_parameters()
+            self._append_history_row()
+
+        self.loss_after_last_training = self._mean_loss(self.rows)
+        self._refresh_everything()
+
+    def _refresh_everything(self) -> None:
+        self._refresh_slider_labels()
+        self._refresh_loss_graph()
+        self._refresh_summary_card()
+
+    def _refresh_slider_labels(self) -> None:
+        self.f_label.setText(f"Keep old memory, f = {self.f_value:.2f}")
+        self.i_label.setText(f"Write new input, i = {self.i_value:.2f}")
+        self.o_label.setText(f"Expose memory, o = {self.o_value:.2f}")
+        self.eta_label.setText(f"Learning rate, η = {self.eta_value:.2f}")
+
+    def _refresh_loss_graph(self) -> None:
+        self.loss_graph.set_history(self.history)
+
+    def _refresh_summary_card(self) -> None:
+        current_loss = self._mean_loss(self.rows)
+
+        if self.training_step == 0:
+            self.summary_card.setHtml(
+                "<h3>Ready to experiment</h3>"
+                "<div style='font-size: 14px;'>"
+                "Choose the controls, then train the output layer.<br><br>"
+                f"Current step: <b>{self.training_step}</b><br>"
+                f"Mean loss: <b>{fmt_decimal(current_loss)}</b><br>"
+                f"Output layer: <b>w = {fmt_decimal(self.current_w_value)}, b = {fmt_decimal(self.current_b_value)}</b><br><br>"
+                f"Controls: <b>f = {self.f_value:.2f}, i = {self.i_value:.2f}, o = {self.o_value:.2f}, η = {self.eta_value:.2f}</b>"
+                "</div>"
+            )
+            return
+
+        step_word = "step" if self.last_training_count == 1 else "steps"
+        self.summary_card.setHtml(
+            f"<h3>Trained {self.last_training_count} more {step_word}</h3>"
+            "<div style='font-size: 14px;'>"
+            f"Current step: <b>{self.training_step}</b><br>"
+            f"Mean loss: <b>{fmt_decimal(current_loss)}</b><br>"
+            f"Output layer: <b>w = {fmt_decimal(self.current_w_value)}, b = {fmt_decimal(self.current_b_value)}</b><br><br>"
+            f"Last change in mean loss: {fmt_decimal(self.loss_before_last_training)} &rarr; "
+            f"<span style='color:{COBBER_MAROON}; font-weight:bold;'>{fmt_decimal(self.loss_after_last_training)}</span><br><br>"
+            f"Controls: <b>f = {self.f_value:.2f}, i = {self.i_value:.2f}, o = {self.o_value:.2f}, η = {self.eta_value:.2f}</b>"
+            "</div>"
+        )
+
+
 # ============================================================
 # Main app window
 # ============================================================
@@ -3442,15 +3793,16 @@ class CobberEcoLSTMguidedApp(QMainWindow):
         self.setFont(QFont("Lato", 10))
 
         tabs = QTabWidget()
-        tabs.addTab(BuildWindowsTab(), "1. Build Windows")
-        tabs.addTab(WatchMemoryTab(), "2. Watch Memory")
-        tabs.addTab(ExposeMemoryTab(), "3. Expose Memory")
+        tabs.addTab(BuildWindowsTab(), "Build Windows")
+        tabs.addTab(WatchMemoryTab(), "Watch Memory")
+        tabs.addTab(ExposeMemoryTab(), "Expose Memory")
 
-        tabs.addTab(CheckPredictionTab(), "4. Make Prediction")
+        tabs.addTab(CheckPredictionTab(), "Make Prediction")
 
-        tabs.addTab(OneTrainingStepTab(), "5. One Training Step")
+        tabs.addTab(OneTrainingStepTab(), "One Training Step")
 
-        tabs.addTab(ContinueTrainingTab(), "6. Continue Training")
+        tabs.addTab(ContinueTrainingTab(), "Continue Training")
+        tabs.addTab(ExperimentControlsTab(), "Tune the Memory")
 
         self.setCentralWidget(tabs)
 
