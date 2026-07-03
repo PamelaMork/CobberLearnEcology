@@ -3254,7 +3254,7 @@ class ContinueTrainingTab(QWidget):
         top_row.addWidget(summary_box, stretch=0)
         layout.addLayout(top_row, stretch=1)
 
-        prediction_box = QGroupBox("Current predictions across windows")
+        prediction_box = QGroupBox("Predictions at Current Training Step")
         prediction_layout = QVBoxLayout(prediction_box)
         prediction_layout.setContentsMargins(8, 8, 8, 8)
         self.prediction_table = QTableWidget()
@@ -3390,7 +3390,7 @@ class ContinueTrainingTab(QWidget):
             [
                 "Window",
                 "Target y",
-                "ŷ current",
+                f"ŷ at step {self.training_step}",
             ]
         )
         self.prediction_table.verticalHeader().setVisible(False)
@@ -3401,6 +3401,7 @@ class ContinueTrainingTab(QWidget):
             self.prediction_table.setItem(row_index, 0, make_table_item(row.window_number))
             self.prediction_table.setItem(row_index, 1, make_target_item(trend_text(row.target), is_current=False))
             self.prediction_table.setItem(row_index, 2, make_table_item(fmt_decimal(row.yhat)))
+
         self.prediction_table.resizeRowsToContents()
 
     def _refresh_summary_card(self) -> None:
@@ -3630,7 +3631,7 @@ class ExperimentControlsTab(QWidget):
             "<div style='font-size: 14px;'>"
             "A higher <b>f</b> keeps memory longer. A higher <b>i</b> writes more of the current input. "
             "A higher <b>o</b> exposes more memory for prediction. A higher <b>η</b> makes larger training steps.<br><br>"
-            "These controls belong to the teaching model. A full LSTM learns gate behavior from data. "
+            "A full LSTM can learn how much information to keep, write, and expose from data"
             "Here, you choose the controls so you can see how memory behavior changes."
             "</div>"
         )
