@@ -1,0 +1,7 @@
+model,feature_set,test_mae,test_rmse,test_r2
+Linear Regression,Flood depth only,0.994,1.172,0.64
+Linear Regression,Full field measurements,0.64,0.788,0.838
+Random Forest,Flood depth only,0.931,1.146,0.656
+Random Forest,Full field measurements,0.649,0.799,0.833
+k-Nearest Neighbors,Flood depth only,1.031,1.254,0.588
+k-Nearest Neighbors,Full field measurements,0.63,0.75,0.853

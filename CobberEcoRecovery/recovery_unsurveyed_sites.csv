@@ -1,0 +1,25 @@
+site_id,landscape_position,burn_severity,greenness_index,soil_moisture,canopy_cover_pct,slope_degrees,regrowth_height_cm,planning_context
+U1,open_slope,2.7,0.296,0.341,48.3,17.0,21.5,Unsurveyed open slope site
+U2,open_slope,1.87,0.335,0.479,42.3,32.3,58.2,Unsurveyed open slope site
+U3,ridge,2.58,0.454,0.347,71.8,30.7,59.7,Unsurveyed ridge site
+U4,open_slope,2.28,0.323,0.246,25.9,25.8,35.7,Unsurveyed open slope site
+U5,open_slope,3.23,0.44,0.342,52.1,31.9,73.1,Unsurveyed open slope site
+U6,drainage,1.96,0.832,0.548,63.4,13.0,97.9,Unsurveyed drainage site
+U7,drainage,2.13,0.735,0.6,67.1,1.0,75.7,Unsurveyed drainage site
+U8,ridge,3.22,0.346,0.296,40.9,40.0,24.1,Unsurveyed ridge site
+U9,open_slope,3.81,0.514,0.427,57.1,40.0,27.4,Unsurveyed open slope site
+U10,open_slope,3.45,0.321,0.397,24.7,31.4,38.9,Unsurveyed open slope site
+U11,open_slope,4.58,0.759,0.534,50.0,21.4,59.3,Unsurveyed open slope site
+U12,open_slope,4.82,0.484,0.29,26.5,19.5,40.7,Unsurveyed open slope site
+U13,drainage,4.09,0.257,0.376,66.1,8.4,49.0,Unsurveyed drainage site
+U14,open_slope,3.56,0.614,0.475,59.2,18.8,51.0,Unsurveyed open slope site
+U15,open_slope,2.04,0.45,0.481,63.7,6.7,49.5,Unsurveyed open slope site
+U16,drainage,0.31,0.793,0.7,66.0,12.3,68.6,Unsurveyed drainage site
+U17,open_slope,4.8,0.205,0.464,47.6,25.5,35.2,Unsurveyed open slope site
+U18,ridge,1.67,0.704,0.333,37.4,17.7,94.3,Unsurveyed ridge site
+U19,open_slope,4.47,0.337,0.339,17.8,32.1,42.2,Unsurveyed open slope site
+U20,ridge,3.92,0.249,0.135,21.5,30.6,9.3,Unsurveyed ridge site
+U21,ridge,4.54,0.342,0.254,1.8,27.9,23.3,Unsurveyed ridge site
+U22,open_slope,0.49,0.73,0.468,52.5,23.6,14.4,Unsurveyed open slope site
+U23,open_slope,3.46,0.602,0.316,30.4,21.9,32.1,Unsurveyed open slope site
+U24,ridge,1.37,0.779,0.557,61.0,24.2,63.6,Unsurveyed ridge site
