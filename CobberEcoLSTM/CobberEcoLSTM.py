@@ -1035,6 +1035,8 @@ class TrainLSTMTab(BaseTab):
         training_note = QLabel(
             "The model can train for up to 200 epochs. Training stops early when validation loss no longer improves."
         )
+
+
         training_note.setWordWrap(True)
         settings_layout.addWidget(training_note)
         self.train_button = QPushButton("Train the LSTM")
