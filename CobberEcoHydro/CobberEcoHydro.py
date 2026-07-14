@@ -1,6 +1,6 @@
-# CobberEcoHydro_NorthMarsh_v7.py
-# A PyQt6 application for training and testing a Deep Q-Network that manages
-# water entering a simplified managed marsh.
+# CobberEcoHydro_NorthMarsh_v8.py
+# A PyQt6 application for training, testing, and inspecting a Deep Q-Network
+# that manages water entering a simplified managed marsh.
 #
 # Ecological framing:
 #   North Marsh is below its seasonal target depth. A learning agent adjusts
@@ -25,7 +25,7 @@
 #   pip install PyQt6 numpy matplotlib tensorflow
 #
 # Run:
-#   python CobberEcoHydro_NorthMarsh_v7.py
+#   python CobberEcoHydro_NorthMarsh_v8.py
 
 from __future__ import annotations
 
@@ -41,7 +41,9 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPixmap
@@ -83,6 +85,12 @@ OUTCOME_TABLE_COLORS = {
     "Stable target": PROJECT_GREEN,
     "Below target": "#8A6B2F",
     "Overshoot": COBBER_MAROON,
+}
+
+ACTION_COLORS = {
+    0: COBBER_MAROON,
+    1: HIGHLIGHT_GOLD,
+    2: INFO_BLUE,
 }
 
 
@@ -793,7 +801,6 @@ class EvaluationThread(QThread):
                 ),
                 "underfills": underfills,
                 "overshoots": overshoots,
-
             }
             self.update_summary.emit(summary)
             self.status_message.emit("Testing complete.")
@@ -1150,7 +1157,6 @@ class TrainingProgressTab(QWidget):
         self.stable_value = QLabel("0")
         self.below_value = QLabel("0")
         self.overshoot_value = QLabel("0")
-        self.flowing_value = QLabel("0")
 
         summary_items = [
             ("Episodes", self.episodes_value),
@@ -1435,7 +1441,7 @@ class TrainingTab(QWidget):
         filepath, _ = QFileDialog.getSaveFileName(
             self,
             "Save Trained Wetland Model",
-            str(APP_ROOT / "north_marsh_dqn_v7.weights.h5"),
+            str(APP_ROOT / "north_marsh_dqn_v9.weights.h5"),
             "Keras Weights (*.weights.h5)",
         )
         if not filepath:
@@ -1795,6 +1801,482 @@ class EvaluationTab(QWidget):
         self.load_button.setEnabled(True)
 
 
+class PolicyInspectionTab(QWidget):
+    """Visualize the action with the largest Q-value across wetland states."""
+
+    def __init__(self):
+        super().__init__()
+        self.model: Optional[DQN] = None
+        self.loaded_filename = ""
+        self.depth_values: Optional[np.ndarray] = None
+        self.inflow_values: Optional[np.ndarray] = None
+        self.action_grid: Optional[np.ndarray] = None
+        self.q_value_grid: Optional[np.ndarray] = None
+        self.map_axes = None
+        self.selected_marker = None
+        self.map_target_depth: Optional[float] = None
+
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(12, 10, 12, 10)
+        root_layout.setSpacing(7)
+
+        intro = QLabel(
+            "What did the DQN actually learn? Load a saved policy and examine which "
+            "gate action has the highest estimated long-term value across combinations "
+            "of depth estimate and inflow rate."
+        )
+        intro.setWordWrap(True)
+        root_layout.addWidget(intro)
+
+        controls_group = QGroupBox("Policy Map Setup")
+        controls_layout = QHBoxLayout(controls_group)
+
+        self.target_input = QComboBox()
+        for target_depth in range(12, 25):
+            self.target_input.addItem(
+                f"{target_depth:.2f} cm",
+                float(target_depth),
+            )
+        self.target_input.setCurrentIndex(self.target_input.findData(20.0))
+        self.target_input.currentIndexChanged.connect(self.target_changed)
+
+        self.load_button = QPushButton("Load Model")
+        self.load_button.setObjectName("secondaryButton")
+        self.load_button.clicked.connect(self.load_model)
+
+        self.map_button = QPushButton("Build Policy Map")
+        self.map_button.setObjectName("primaryButton")
+        self.map_button.clicked.connect(self.build_policy_map)
+        self.map_button.setEnabled(False)
+
+        controls_layout.addWidget(QLabel("Target depth:"))
+        controls_layout.addWidget(self.target_input)
+        controls_layout.addStretch(1)
+        controls_layout.addWidget(self.load_button)
+        controls_layout.addWidget(self.map_button)
+        root_layout.addWidget(controls_group)
+
+        explanation = QLabel(
+            "The neural network first estimates one Q-value for each action. The policy "
+            "then chooses the action with the largest Q-value. The colored map shows that "
+            "second step. Click the map to inspect all three Q-values for one state."
+        )
+        explanation.setWordWrap(True)
+        explanation.setStyleSheet(f"color: {MISC_BROWN};")
+        root_layout.addWidget(explanation)
+
+        self.model_status = QLabel("No model loaded.")
+        self.model_status.setStyleSheet(f"color: {MISC_BROWN}; font-weight: 700;")
+        root_layout.addWidget(self.model_status)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        map_group = QGroupBox("Preferred Gate Action Across States")
+        map_layout = QVBoxLayout(map_group)
+        self.map_figure = Figure(figsize=(8.4, 5.5))
+        self.map_canvas = FigureCanvas(self.map_figure)
+        self.map_canvas.mpl_connect("button_press_event", self.map_clicked)
+        map_layout.addWidget(self.map_canvas)
+        splitter.addWidget(map_group)
+
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(7)
+
+        state_group = QGroupBox("Selected State")
+        state_layout = QVBoxLayout(state_group)
+        self.selected_title = QLabel("No state selected")
+        self.selected_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.selected_title.setStyleSheet(
+            f"font-size: 13pt; font-weight: 700; color: {COBBER_MAROON};"
+        )
+        state_layout.addWidget(self.selected_title)
+
+        self.state_details = QLabel(
+            "Load a model and build the map. Then click any colored region."
+        )
+        self.state_details.setWordWrap(True)
+        self.state_details.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        state_layout.addWidget(self.state_details)
+        right_layout.addWidget(state_group)
+
+        q_group = QGroupBox("Q-Values for the Selected State")
+        q_layout = QVBoxLayout(q_group)
+        self.q_figure = Figure(figsize=(4.8, 4.2))
+        self.q_canvas = FigureCanvas(self.q_figure)
+        q_layout.addWidget(self.q_canvas)
+        right_layout.addWidget(q_group, 1)
+
+        splitter.addWidget(right_panel)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([820, 500])
+        root_layout.addWidget(splitter, 1)
+
+        self.status_label = QLabel("Load a saved model to inspect its policy.")
+        self.status_label.setStyleSheet(f"color: {MISC_BROWN}; font-weight: 700;")
+        root_layout.addWidget(self.status_label)
+
+        self.show_map_message("Load a saved model to build the policy map.")
+        self.show_q_message("Select a state to compare its three Q-values.")
+
+    def show_map_message(self, message: str) -> None:
+        self.map_figure.clear()
+        ax = self.map_figure.add_subplot(111)
+        ax.text(
+            0.5,
+            0.5,
+            message,
+            ha="center",
+            va="center",
+            wrap=True,
+            color=MISC_BROWN,
+        )
+        ax.set_axis_off()
+        self.map_figure.tight_layout()
+        self.map_canvas.draw()
+        self.map_axes = None
+        self.selected_marker = None
+
+    def show_q_message(self, message: str) -> None:
+        self.q_figure.clear()
+        ax = self.q_figure.add_subplot(111)
+        ax.text(
+            0.5,
+            0.5,
+            message,
+            ha="center",
+            va="center",
+            wrap=True,
+            color=MISC_BROWN,
+        )
+        ax.set_axis_off()
+        self.q_figure.tight_layout()
+        self.q_canvas.draw()
+
+    def load_model(self) -> None:
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Trained Wetland Model",
+            str(APP_ROOT),
+            "Keras Weights (*.weights.h5)",
+        )
+        if not filepath:
+            return
+
+        try:
+            model = DQN(3, 3)
+            model(tf.zeros((1, 3), dtype=tf.float32))
+            model.load_weights(filepath)
+            self.model = model
+            self.loaded_filename = os.path.basename(filepath)
+            self.model_status.setText(f"Loaded model: {self.loaded_filename}")
+            self.model_status.setStyleSheet(
+                f"color: {PROJECT_GREEN}; font-weight: 700;"
+            )
+            self.map_button.setEnabled(True)
+            self.status_label.setText(
+                "Model loaded. Building the policy map for the selected target."
+            )
+            self.build_policy_map()
+        except Exception as exc:
+            self.model = None
+            self.loaded_filename = ""
+            self.map_button.setEnabled(False)
+            self.show_map_message("The selected model could not be loaded.")
+            self.show_q_message("No Q-values are available.")
+            QMessageBox.critical(
+                self,
+                "Load Model Error",
+                "The model could not be loaded. Models saved by the older four-input "
+                f"app are not compatible with this version.\n\n{exc}",
+            )
+
+    def target_changed(self) -> None:
+        if self.model is None:
+            return
+
+        selected_target = float(self.target_input.currentData())
+        if self.map_target_depth is None:
+            self.status_label.setText(
+                f"Target set to {selected_target:.2f} cm. Click Build Policy Map."
+            )
+            return
+
+        if np.isclose(selected_target, self.map_target_depth):
+            self.status_label.setText(
+                f"The displayed map already uses a {self.map_target_depth:.2f} cm target."
+            )
+        else:
+            self.status_label.setText(
+                f"Target changed to {selected_target:.2f} cm. The displayed map still uses "
+                f"{self.map_target_depth:.2f} cm. Click Build Policy Map to update it."
+            )
+
+    def build_policy_map(self) -> None:
+        if self.model is None:
+            QMessageBox.warning(
+                self,
+                "Policy Map Setup",
+                "Load a trained model first.",
+            )
+            return
+
+        target_depth = float(self.target_input.currentData())
+        self.map_target_depth = target_depth
+        env = WetlandControlEnv(depth_measurement_uncertainty=0.0)
+
+        depth_min = max(0.0, target_depth - 8.0)
+        depth_max = target_depth + 1.5
+        self.depth_values = np.linspace(depth_min, depth_max, 96)
+        self.inflow_values = np.linspace(
+            env.min_inflow_rate,
+            env.max_inflow_rate,
+            61,
+        )
+
+        depth_grid, inflow_grid = np.meshgrid(
+            self.depth_values,
+            self.inflow_values,
+        )
+        states = np.column_stack(
+            [
+                depth_grid.ravel() / env.depth_scale,
+                inflow_grid.ravel() / env.max_inflow_rate,
+                np.full(depth_grid.size, target_depth / env.depth_scale),
+            ]
+        ).astype(np.float32)
+
+        q_values = self.model(
+            tf.convert_to_tensor(states, dtype=tf.float32),
+            training=False,
+        ).numpy()
+        actions = np.argmax(q_values, axis=1)
+
+        self.action_grid = actions.reshape(depth_grid.shape)
+        self.q_value_grid = q_values.reshape(
+            depth_grid.shape[0],
+            depth_grid.shape[1],
+            3,
+        )
+
+        self.map_figure.clear()
+        ax = self.map_figure.add_subplot(111)
+        self.map_axes = ax
+        self.selected_marker = None
+
+        cmap = ListedColormap(
+            [ACTION_COLORS[0], ACTION_COLORS[1], ACTION_COLORS[2]]
+        )
+        ax.imshow(
+            self.action_grid,
+            origin="lower",
+            aspect="auto",
+            interpolation="nearest",
+            extent=[
+                float(self.depth_values[0]),
+                float(self.depth_values[-1]),
+                float(self.inflow_values[0]),
+                float(self.inflow_values[-1]),
+            ],
+            cmap=cmap,
+            vmin=-0.5,
+            vmax=2.5,
+        )
+
+        lower_limit = target_depth - env.depth_tolerance
+        upper_limit = target_depth + env.depth_tolerance
+        ax.axvspan(
+            lower_limit,
+            upper_limit,
+            color=HIGHLIGHT_GOLD,
+            alpha=0.14,
+            hatch="//",
+            label="Acceptable depth range",
+        )
+        ax.axvline(
+            target_depth,
+            color=CHARCOAL,
+            linestyle="--",
+            linewidth=1.5,
+        )
+
+        legend_handles = [
+            Patch(facecolor=ACTION_COLORS[0], label="Close slightly"),
+            Patch(facecolor=ACTION_COLORS[1], label="Hold setting"),
+            Patch(facecolor=ACTION_COLORS[2], label="Open slightly"),
+            Patch(
+                facecolor="white",
+                edgecolor=HIGHLIGHT_GOLD,
+                hatch="//",
+                label="Acceptable depth range",
+            ),
+        ]
+        ax.legend(
+            handles=legend_handles,
+            loc="upper left",
+            fontsize=8,
+            framealpha=0.95,
+        )
+        ax.set_xlabel("Depth estimate received by the DQN (cm)")
+        ax.set_ylabel("Current inflow rate (cm/hr)")
+        ax.set_title(
+            f"Highest-Q Action at a {target_depth:.0f} cm Target",
+            fontsize=11,
+            fontweight="bold",
+        )
+        ax.grid(alpha=0.12)
+        self.map_figure.tight_layout()
+        self.map_canvas.draw()
+
+        counts = np.bincount(actions, minlength=3)
+        total_states = int(actions.size)
+        self.status_label.setText(
+            f"Policy map built from {total_states:,} states. "
+            f"Close: {100.0 * counts[0] / total_states:.0f}% | "
+            f"Hold: {100.0 * counts[1] / total_states:.0f}% | "
+            f"Open: {100.0 * counts[2] / total_states:.0f}%. "
+            "Click the map to inspect one state."
+        )
+
+        # Begin with a representative state near the target while water is moving.
+        self.select_state(target_depth - 1.0, 0.75)
+
+    def map_clicked(self, event) -> None:
+        if (
+            self.model is None
+            or self.map_axes is None
+            or event.inaxes is not self.map_axes
+            or event.xdata is None
+            or event.ydata is None
+        ):
+            return
+        self.select_state(float(event.xdata), float(event.ydata))
+
+    def select_state(self, depth_estimate: float, inflow_rate: float) -> None:
+        if (
+            self.model is None
+            or self.depth_values is None
+            or self.inflow_values is None
+            or self.q_value_grid is None
+            or self.map_axes is None
+        ):
+            return
+
+        depth_index = int(
+            np.argmin(np.abs(self.depth_values - float(depth_estimate)))
+        )
+        inflow_index = int(
+            np.argmin(np.abs(self.inflow_values - float(inflow_rate)))
+        )
+
+        selected_depth = float(self.depth_values[depth_index])
+        selected_inflow = float(self.inflow_values[inflow_index])
+        q_values = np.asarray(
+            self.q_value_grid[inflow_index, depth_index, :],
+            dtype=float,
+        )
+        best_action = int(np.argmax(q_values))
+        sorted_q = np.sort(q_values)
+        action_gap = float(sorted_q[-1] - sorted_q[-2])
+        if self.map_target_depth is None:
+            return
+        target_depth = float(self.map_target_depth)
+
+        if self.selected_marker is not None:
+            try:
+                self.selected_marker.remove()
+            except ValueError:
+                pass
+        self.selected_marker = self.map_axes.plot(
+            selected_depth,
+            selected_inflow,
+            marker="o",
+            markersize=11,
+            markerfacecolor="none",
+            markeredgecolor="#000000",
+            markeredgewidth=2.0,
+            zorder=10,
+        )[0]
+        self.map_canvas.draw_idle()
+
+        lower_limit = target_depth - 0.50
+        upper_limit = target_depth + 0.50
+        if selected_depth < lower_limit:
+            depth_position = "below the acceptable range"
+        elif selected_depth > upper_limit:
+            depth_position = "above the acceptable range"
+        else:
+            depth_position = "inside the acceptable range"
+
+        action_label = WetlandControlEnv.ACTION_LABELS[best_action]
+        self.selected_title.setText(action_label)
+        self.state_details.setText(
+            f"Depth estimate: <b>{selected_depth:.2f} cm</b><br>"
+            f"Current inflow: <b>{selected_inflow:.2f} cm/hr</b><br>"
+            f"Target depth: <b>{target_depth:.2f} cm</b><br>"
+            f"Location: <b>{depth_position}</b><br>"
+            f"Gap between the two highest Q-values: <b>{action_gap:.3f}</b>"
+        )
+
+        self.q_figure.clear()
+        ax = self.q_figure.add_subplot(111)
+        action_names = ["Close", "Hold", "Open"]
+        bars = ax.barh(
+            action_names,
+            q_values,
+            color=[ACTION_COLORS[0], ACTION_COLORS[1], ACTION_COLORS[2]],
+        )
+        ax.axvline(0.0, color=CHARCOAL, linewidth=0.8)
+        ax.set_xlabel("Estimated Q-value")
+        ax.set_title(
+            f"Largest value: {action_names[best_action]}",
+            fontsize=10,
+            fontweight="bold",
+            pad=8,
+        )
+        ax.grid(axis="x", alpha=0.20)
+
+        q_min = float(np.min(q_values))
+        q_max = float(np.max(q_values))
+        q_span = max(q_max - q_min, 0.25)
+        axis_min = min(0.0, q_min) - 0.20 * q_span
+        axis_max = max(0.0, q_max) + 0.20 * q_span
+        ax.set_xlim(axis_min, axis_max)
+
+        label_offset = 0.025 * (axis_max - axis_min)
+        for index, bar in enumerate(bars):
+            value = float(q_values[index])
+            if value >= 0:
+                x_position = value + label_offset
+                horizontal_alignment = "left"
+            else:
+                x_position = value - label_offset
+                horizontal_alignment = "right"
+            ax.text(
+                x_position,
+                bar.get_y() + bar.get_height() / 2,
+                f"{value:.3f}",
+                va="center",
+                ha=horizontal_alignment,
+                fontsize=9,
+                fontweight="bold" if index == best_action else "normal",
+                clip_on=False,
+            )
+
+        self.q_figure.subplots_adjust(
+            left=0.16,
+            right=0.95,
+            bottom=0.20,
+            top=0.82,
+        )
+        self.q_canvas.draw()
+
+
 class CobberEcoHydroApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1807,10 +2289,12 @@ class CobberEcoHydroApp(QMainWindow):
         self.progress_tab = TrainingProgressTab()
         self.training_tab = TrainingTab(self.progress_tab)
         self.testing_tab = EvaluationTab()
+        self.policy_tab = PolicyInspectionTab()
 
         self.tabs.addTab(self.training_tab, "Model Training")
         self.tabs.addTab(self.progress_tab, "Training Progress")
         self.tabs.addTab(self.testing_tab, "Model Testing")
+        self.tabs.addTab(self.policy_tab, "Policy Map")
         self.setCentralWidget(self.tabs)
 
 
