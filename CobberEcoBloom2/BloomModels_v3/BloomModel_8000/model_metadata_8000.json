@@ -1,0 +1,72 @@
+{
+  "training_size": 8000,
+  "train_images_per_class": 1600,
+  "validation_images": 1000,
+  "test_images": 1000,
+  "display_class_order": [
+    "clear_water",
+    "mostly_clear",
+    "field_check",
+    "mostly_bloom",
+    "dense_bloom"
+  ],
+  "model_class_order": [
+    "clear_water",
+    "dense_bloom",
+    "field_check",
+    "mostly_bloom",
+    "mostly_clear"
+  ],
+  "image_size": 128,
+  "epochs_requested": 20,
+  "epochs_completed": 12,
+  "best_epoch_by_validation_accuracy": 8,
+  "best_validation_accuracy": 0.8489999771118164,
+  "checkpoint_monitor": "val_accuracy",
+  "batch_size": 64,
+  "learning_rate": 0.001,
+  "augmentation": true,
+  "test_loss": 0.35318708419799805,
+  "test_accuracy_model_evaluate": 0.8460000157356262,
+  "test_accuracy_confusion_matrix": 0.846,
+  "training_seconds": 517.1880777999904,
+  "confusion_matrix_display_order": [
+    [
+      160,
+      40,
+      0,
+      0,
+      0
+    ],
+    [
+      10,
+      185,
+      5,
+      0,
+      0
+    ],
+    [
+      0,
+      27,
+      153,
+      20,
+      0
+    ],
+    [
+      0,
+      0,
+      4,
+      175,
+      21
+    ],
+    [
+      0,
+      0,
+      0,
+      27,
+      173
+    ]
+  ],
+  "best_model": "C:\\Users\\pmork\\OneDrive - cord.edu\\Documents\\GitHub\\CobberLearnEcology\\CobberEcoBloom2\\BloomModels_v3\\BloomModel_8000\\cobber_bloom_model_8000_best.keras",
+  "final_model": "C:\\Users\\pmork\\OneDrive - cord.edu\\Documents\\GitHub\\CobberLearnEcology\\CobberEcoBloom2\\BloomModels_v3\\BloomModel_8000\\cobber_bloom_model_8000.keras"
+}
