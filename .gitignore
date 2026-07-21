@@ -1,0 +1,20 @@
+CobberEcoBloom2/BloomData_v2/images/
+
+# PyCharm project settings
+.idea/
+
+# Large generated training manifest
+CobberEcoBloom2/BloomData_v2/bloom_supervisor_v2.csv
+
+# Generated training diagnostics
+CobberEcoBloom2/BloomModels_v3/**/accuracy_curve_*.png
+CobberEcoBloom2/BloomModels_v3/**/training_curve_*.png
+CobberEcoBloom2/BloomModels_v3/**/confusion_matrix_*.png
+CobberEcoBloom2/BloomModels_v3/**/classification_report_*.txt
+CobberEcoBloom2/BloomModels_v3/**/training_summary_*.txt
+CobberEcoBloom2/BloomModels_v3/**/class_order.json
+
+
+CobberEcoBloom2/BloomModels_v3/**/cobber_bloom_model_2000.keras
+CobberEcoBloom2/BloomModels_v3/**/cobber_bloom_model_8000.keras
+CobberEcoBloom2/BloomModels_v3/**/cobber_bloom_model_16000.keras

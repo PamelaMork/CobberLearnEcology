@@ -1,0 +1,32 @@
+{
+  "training_sizes": [
+    2000,
+    8000,
+    16000
+  ],
+  "display_class_order": [
+    "clear_water",
+    "mostly_clear",
+    "field_check",
+    "mostly_bloom",
+    "dense_bloom"
+  ],
+  "model_class_order": [
+    "clear_water",
+    "dense_bloom",
+    "field_check",
+    "mostly_bloom",
+    "mostly_clear"
+  ],
+  "model_output_class_order": [
+    "clear_water",
+    "dense_bloom",
+    "field_check",
+    "mostly_bloom",
+    "mostly_clear"
+  ],
+  "shared_validation_images": 1000,
+  "shared_test_images": 1000,
+  "dataset_dir": "C:\\Users\\pmork\\OneDrive - cord.edu\\Documents\\GitHub\\CobberLearnEcology\\CobberEcoBloom2\\BloomData_v2",
+  "supervisor_csv": "C:\\Users\\pmork\\OneDrive - cord.edu\\Documents\\GitHub\\CobberLearnEcology\\CobberEcoBloom2\\BloomData_v2\\bloom_supervisor_v2.csv"
+}

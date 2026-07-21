@@ -1,0 +1,4 @@
+training_size,epochs_completed,best_epoch,best_validation_accuracy,training_seconds,test_loss,test_accuracy,best_model
+2000,8,4,0.4000000059604645,88.079,2.7079379558563232,0.4,C:\Users\pmork\OneDrive - cord.edu\Documents\GitHub\CobberLearnEcology\CobberEcoBloom2\BloomModels_v3\BloomModel_2000\cobber_bloom_model_2000_best.keras
+8000,12,8,0.8489999771118164,517.188,0.35318708419799805,0.846,C:\Users\pmork\OneDrive - cord.edu\Documents\GitHub\CobberLearnEcology\CobberEcoBloom2\BloomModels_v3\BloomModel_8000\cobber_bloom_model_8000_best.keras
+16000,16,12,0.8899999856948853,1634.076,0.28855469822883606,0.876,C:\Users\pmork\OneDrive - cord.edu\Documents\GitHub\CobberLearnEcology\CobberEcoBloom2\BloomModels_v3\BloomModel_16000\cobber_bloom_model_16000_best.keras
