@@ -1,0 +1,48 @@
+{
+  "display_class_order": [
+    "clear_water",
+    "mostly_clear",
+    "field_check",
+    "mostly_bloom",
+    "dense_bloom"
+  ],
+  "model_class_order": [
+    "clear_water",
+    "dense_bloom",
+    "field_check",
+    "mostly_bloom",
+    "mostly_clear"
+  ],
+  "coverage_ranges": {
+    "clear_water": [
+      0.0,
+      0.1
+    ],
+    "mostly_clear": [
+      0.1,
+      0.25
+    ],
+    "field_check": [
+      0.25,
+      0.75
+    ],
+    "mostly_bloom": [
+      0.75,
+      0.9
+    ],
+    "dense_bloom": [
+      0.9,
+      1.0
+    ]
+  },
+  "train_total": 16000,
+  "val_total": 1000,
+  "test_total": 1000,
+  "subset_sizes": [
+    2000,
+    8000,
+    16000
+  ],
+  "image_size": 128,
+  "seed": 2027
+}

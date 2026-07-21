@@ -1,0 +1,44 @@
+CobberEcoBloom v2 master dataset
+========================================================================
+Image size: 128 x 128
+Training images: 16000
+Validation images: 1000
+Test images: 1000
+Nested training subsets: 2000, 8000, 16000
+Training edge-case fraction: 0.45
+Validation/test edge-case fraction: 0.65
+
+Coverage ranges:
+  clear_water    [0.00, 0.10)
+  mostly_clear   [0.10, 0.25)
+  field_check    [0.25, 0.75)
+  mostly_bloom   [0.75, 0.90)
+  dense_bloom    [0.90, 1.00]
+
+Counts for train:
+  clear_water    total= 3200  edge= 1440  mean coverage=0.0652
+  mostly_clear   total= 3200  edge= 1440  mean coverage=0.1748
+  field_check    total= 3200  edge= 1440  mean coverage=0.5032
+  mostly_bloom   total= 3200  edge= 1440  mean coverage=0.8250
+  dense_bloom    total= 3200  edge= 1440  mean coverage=0.9349
+
+Counts for val:
+  clear_water    total=  200  edge=  130  mean coverage=0.0752
+  mostly_clear   total=  200  edge=  130  mean coverage=0.1776
+  field_check    total=  200  edge=  130  mean coverage=0.4984
+  mostly_bloom   total=  200  edge=  130  mean coverage=0.8289
+  dense_bloom    total=  200  edge=  130  mean coverage=0.9239
+
+Counts for test:
+  clear_water    total=  200  edge=  130  mean coverage=0.0735
+  mostly_clear   total=  200  edge=  130  mean coverage=0.1757
+  field_check    total=  200  edge=  130  mean coverage=0.4954
+  mostly_bloom   total=  200  edge=  130  mean coverage=0.8229
+  dense_bloom    total=  200  edge=  130  mean coverage=0.9235
+
+Model output index order:
+  0: clear_water
+  1: dense_bloom
+  2: field_check
+  3: mostly_bloom
+  4: mostly_clear
